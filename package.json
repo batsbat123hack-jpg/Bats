@@ -1,0 +1,14 @@
+{
+  "name": "bats-ai",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Bats AI — ChatGPT-style assistant with real web search and image generation (front-end tests only)",
+  "scripts": {
+    "test": "node tests/markdown.test.js && node tests/ui.test.js",
+    "test:ui": "node tests/ui.test.js",
+    "test:md": "node tests/markdown.test.js"
+  },
+  "devDependencies": {
+    "jsdom": "^25.0.1"
+  }
+}

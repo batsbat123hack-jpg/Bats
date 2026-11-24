@@ -1,0 +1,64 @@
+# Bats AI — Render blueprint
+# Push this repo, open Render → "New +" → "Blueprint", pick this repo,
+# then fill in the API keys marked `sync: false` when Render asks for them.
+services:
+  - type: web
+    name: bats-ai
+    runtime: python
+    plan: free
+    region: oregon
+    branch: main
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
+    startCommand: uvicorn app.main:app --host 0.0.0.0 --port $PORT --proxy-headers --forwarded-allow-ips="*"
+    healthCheckPath: /healthz
+    autoDeploy: true
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.11.9"
+      - key: APP_NAME
+        value: Bats AI
+      - key: PUBLIC_URL
+        value: https://www.bats-ai.onrender.com
+      - key: DATA_DIR
+        value: /var/data
+      - key: MAX_UPLOAD_MB
+        value: "20"
+      - key: MAX_ATTACHMENTS
+        value: "6"
+      # ---- model providers: add the ones you have keys for --------------
+      - key: OPENAI_API_KEY
+        sync: false
+      - key: DEFAULT_MODEL
+        value: gpt-4o-mini
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GROQ_API_KEY
+        sync: false
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: DEEPSEEK_API_KEY
+        sync: false
+      - key: MISTRAL_API_KEY
+        sync: false
+      - key: XAI_API_KEY
+        sync: false
+      # ---- image generation --------------------------------------------
+      - key: IMAGE_PROVIDER
+        value: pollinations
+      # free & keyless: works immediately. Set OPENAI_API_KEY + IMAGE_PROVIDER=openai
+      # for gpt-image-1 / dall-e-3 quality.
+      # ---- real web search ---------------------------------------------
+      - key: BRAVE_API_KEY
+        sync: false
+      - key: TAVILY_API_KEY
+        sync: false
+      - key: SERPER_API_KEY
+        sync: false
+      - key: WEB_SEARCH_DEFAULT
+        value: "true"
+    disk:
+      name: bats-data
+      mountPath: /var/data
+      sizeGB: 1

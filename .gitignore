@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+
+# app data (chats, uploads, generated images)
+data/
+
+# local env
+.env
+.env.local
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+node_modules/
