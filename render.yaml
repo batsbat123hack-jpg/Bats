@@ -58,6 +58,19 @@ services:
         sync: false
       - key: WEB_SEARCH_DEFAULT
         value: "true"
+      # ---- optional: try the app with zero keys (canned answers + demo art)
+      - key: DEMO_MODE
+        value: "false"
+      # ---- optional protection for a public URL
+      - key: ACCESS_CODE
+        sync: false
+      - key: RATE_LIMIT_PER_MINUTE
+        value: "40"
+      - key: RATE_LIMIT_PER_DAY
+        value: "2000"
+      # ---- let visitors paste their own keys in Settings (no redeploy needed)
+      - key: ALLOW_CLIENT_KEYS
+        value: "true"
     disk:
       name: bats-data
       mountPath: /var/data

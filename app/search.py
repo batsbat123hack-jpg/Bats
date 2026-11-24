@@ -476,6 +476,8 @@ async def web_search(
                 else:
                     continue
                 results = _dedupe(results, limit)
+                if not results:
+                    errors.append(f"{name}: no results")
                 if results:
                     for res in results:
                         res.source = name
@@ -488,7 +490,14 @@ async def web_search(
     finally:
         if own_client:
             await client.aclose()
-    bundle.error = "; ".join(errors[-3:]) or "No search provider returned results"
+    if errors:
+        bundle.error = (
+            "all engines failed ("
+            + "; ".join(errors)
+            + "). If this repeats, add a free BRAVE_API_KEY or TAVILY_API_KEY on the server."
+        )
+    else:
+        bundle.error = "No search provider returned results"
     return bundle
 
 
