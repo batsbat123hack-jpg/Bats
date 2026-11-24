@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0d12" />
+<title>Bats AI</title>
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="manifest" href="/manifest.webmanifest" />
+<link rel="stylesheet" href="/static/styles.css" />
+<script>
+  // apply the saved theme before paint to avoid a flash
+  try {
+    const t = localStorage.getItem('bats.theme') || 'dark';
+    document.documentElement.dataset.theme = t;
+  } catch (e) {}
+</script>
+</head>
+<body>
+<div id="app" class="app">
+  <!-- ------------------------------------------------------------------ -->
+  <!-- sidebar                                                            -->
+  <!-- ------------------------------------------------------------------ -->
+  <aside id="sidebar" class="sidebar" aria-label="Chat history">
+    <div class="sidebar-head">
+      <button id="newChatBtn" class="new-chat" title="New chat (Ctrl+Shift+O)">
+        <span class="logo-badge" aria-hidden="true">B</span>
+        <span>New chat</span>
+        <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </div>
+
+    <div class="sidebar-search">
+      <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="2"/><path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      <input id="historySearch" type="search" placeholder="Search chats" autocomplete="off" />
+    </div>
+
+    <nav class="chat-list" id="chatList" aria-label="Chats"></nav>
+
+    <div class="sidebar-foot">
+      <button class="side-item" id="settingsBtn">
+        <svg viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><circle cx="12" cy="12" r="3.2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.87l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.87-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.11A1.7 1.7 0 0 0 8.9 19.3a1.7 1.7 0 0 0-1.87.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.7 15a1.7 1.7 0 0 0-1.56-1.03H3a2 2 0 1 1 0-4h.11A1.7 1.7 0 0 0 4.7 8.9a1.7 1.7 0 0 0-.34-1.87l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.7a1.7 1.7 0 0 0 1-1.56V3a2 2 0 1 1 4 0v.11a1.7 1.7 0 0 0 1.03 1.56 1.7 1.7 0 0 0 1.87-.34l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.7 1.7 0 0 0 19.3 9c.26.63.87 1.04 1.56 1.04H21a2 2 0 1 1 0 4h-.11a1.7 1.7 0 0 0-1.56 1.03Z" fill="none" stroke="currentColor" stroke-width="1.5"/></svg>
+        <span>Settings</span>
+      </button>
+      <button class="side-item" id="themeBtn" title="Toggle theme">
+        <svg class="ico-moon" viewBox="0 0 24 24" width="17" height="17" aria-hidden="true"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8Z" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"/></svg>
+        <span>Appearance</span>
+      </button>
+      <div class="side-status" id="sideStatus"></div>
+    </div>
+  </aside>
+
+  <!-- ------------------------------------------------------------------ -->
+  <!-- main                                                               -->
+  <!-- ------------------------------------------------------------------ -->
+  <main class="main">
+    <header class="topbar">
+      <button id="menuBtn" class="icon-btn only-mobile" aria-label="Menu">
+        <svg viewBox="0 0 24 24" width="20" height="20"><path d="M4 7h16M4 12h16M4 17h16" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+      <div class="model-picker">
+        <button id="modelBtn" class="model-btn" aria-haspopup="listbox" aria-expanded="false">
+          <span id="modelLabel">Select model</span>
+          <svg viewBox="0 0 24 24" width="14" height="14"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+        <div id="modelMenu" class="menu model-menu" role="listbox" hidden></div>
+      </div>
+      <div class="topbar-right">
+        <span id="statusPill" class="pill" hidden></span>
+        <button id="shareBtn" class="icon-btn" title="Export chat as Markdown">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 16V4m0 0L8 8m4-4 4 4M4 16v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <button id="newChatTop" class="icon-btn only-mobile" title="New chat">
+          <svg viewBox="0 0 24 24" width="18" height="18"><path d="M12 5v14M5 12h14" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- conversation -->
+    <section id="thread" class="thread" aria-live="polite"></section>
+
+    <!-- empty state -->
+    <section id="emptyState" class="empty-state">
+      <div class="hero">
+        <div class="hero-logo" aria-hidden="true">B</div>
+        <h1>What can I help with?</h1>
+        <p class="hero-sub">Free to use, no key needed: chat, live web search, image reading, image creation.</p>
+      </div>
+      <div class="suggestions" id="suggestions"></div>
+    </section>
+
+    <!-- composer -->
+    <div class="composer-wrap">
+      <div id="attachmentTray" class="attachment-tray" hidden></div>
+      <form id="composer" class="composer">
+        <button type="button" id="attachBtn" class="icon-btn inside" title="Attach images (any format)">
+          <svg viewBox="0 0 24 24" width="19" height="19"><path d="M21 11.5 12.5 20a5 5 0 0 1-7-7l8-8a3.5 3.5 0 0 1 5 5l-8 8a2 2 0 0 1-2.8-2.8l7-7" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        </button>
+        <textarea id="input" rows="1" placeholder="Message Bats AI…" autocomplete="off" spellcheck="true" aria-label="Message"></textarea>
+        <div class="composer-actions">
+          <button type="button" id="imageBtn" class="tool-btn" title="Create an image">
+            <svg viewBox="0 0 24 24" width="17" height="17"><rect x="3" y="4" width="18" height="16" rx="3" fill="none" stroke="currentColor" stroke-width="1.8"/><circle cx="8.5" cy="9.5" r="1.6" fill="currentColor"/><path d="m4 17 5-5 4.5 4.5L17 13l3 3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <span>Image</span>
+          </button>
+          <button type="button" id="searchBtn" class="tool-btn" aria-pressed="false" title="Search the web">
+            <svg viewBox="0 0 24 24" width="17" height="17"><circle cx="11" cy="11" r="7" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="m16.5 16.5 4 4" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>
+            <span>Search</span>
+          </button>
+          <button type="submit" id="sendBtn" class="send-btn" title="Send message" aria-label="Send">
+            <svg viewBox="0 0 24 24" width="18" height="18" class="ico-send"><path d="M12 19V5m0 0-6 6m6-6 6 6" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+            <svg viewBox="0 0 24 24" width="14" height="14" class="ico-stop"><rect x="6" y="6" width="12" height="12" rx="2" fill="currentColor"/></svg>
+          </button>
+        </div>
+      </form>
+      <input id="fileInput" type="file" accept="image/*,.heic,.heif,.avif,.tif,.tiff,.svg" multiple hidden />
+      <p class="disclaimer">Bats AI can make mistakes. Check important information.</p>
+    </div>
+  </main>
+
+  <div id="sidebarBackdrop" class="backdrop" hidden></div>
+</div>
+
+<!-- -------------------------------------------------------------------- -->
+<!-- settings modal                                                       -->
+<!-- -------------------------------------------------------------------- -->
+<div id="settingsModal" class="modal" hidden>
+  <div class="modal-card" role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <header class="modal-head">
+      <h2 id="settingsTitle">Settings</h2>
+      <button class="icon-btn" id="closeSettings" aria-label="Close">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 6l12 12M18 6 6 18" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+      </button>
+    </header>
+    <nav class="tabs" id="settingsTabs">
+      <button class="tab active" data-tab="keys">API keys</button>
+      <button class="tab" data-tab="models">Model</button>
+      <button class="tab" data-tab="search">Web search</button>
+      <button class="tab" data-tab="access">Access</button>
+      <button class="tab" data-tab="data">Data</button>
+      <button class="tab" data-tab="about">About</button>
+    </nav>
+    <div class="modal-body">
+      <section class="tab-panel active" data-panel="keys">
+        <div class="free-note">
+          <b>You don't need any key.</b> Bats Free answers with anonymous free models and
+          keyless web search. Add a key below only if you want a specific paid model.
+        </div>
+        <p class="muted">
+          Keys you paste here stay in <strong>this browser</strong> (localStorage) and are sent
+          straight to the provider. Server-side keys set on Render always take priority.
+        </p>
+        <div id="keyList" class="key-list"></div>
+        <label class="field">
+          <span>Custom base URL <em>(for self-hosted / proxy OpenAI-compatible servers)</em></span>
+          <input id="customBaseUrl" type="url" placeholder="https://my-proxy.example.com/v1" />
+        </label>
+      </section>
+
+      <section class="tab-panel" data-panel="models">
+        <div class="grid2">
+          <label class="field"><span>Temperature <b id="tempVal">0.7</b></span>
+            <input id="tempRange" type="range" min="0" max="2" step="0.1" value="0.7" />
+          </label>
+          <label class="field"><span>Max response tokens <b id="maxTokVal">2048</b></span>
+            <input id="maxTokRange" type="range" min="256" max="8192" step="256" value="2048" />
+          </label>
+        </div>
+        <label class="field"><span>Image size</span>
+          <select id="imageSize">
+            <option value="1024x1024">1024 × 1024 (square)</option>
+            <option value="1024x1536">1024 × 1536 (portrait)</option>
+            <option value="1536x1024">1536 × 1024 (landscape)</option>
+          </select>
+        </label>
+        <label class="field"><span>Image engine</span>
+          <select id="imageProvider"></select>
+        </label>
+        <p class="muted small">Free engines: Pollinations (real AI art) and Bats offline art
+          (works even with no internet). Adding an OpenAI key unlocks gpt-image-1.</p>
+      </section>
+
+      <section class="tab-panel" data-panel="search">
+        <p class="muted">Web search runs on the server. Available engines on this deployment:</p>
+        <div id="searchProviders" class="chips"></div>
+        <label class="switch-row">
+          <span>Search the web by default</span>
+          <input type="checkbox" id="searchDefault" class="switch" />
+        </label>
+        <p class="muted small">
+          Search works with <b>no key at all</b> (DuckDuckGo, Google News, Mojeek, Hacker News,
+          Wikipedia). Adding a free <code>BRAVE_API_KEY</code> or <code>TAVILY_API_KEY</code> on
+          Render makes it faster and more reliable.
+        </p>
+      </section>
+
+      <section class="tab-panel" data-panel="access">
+        <p class="muted">
+          If this deployment set an <code>ACCESS_CODE</code>, enter it here once. It is stored
+          in this browser and unlocks your private chat endpoint.
+        </p>
+        <label class="field">
+          <span>Access code</span>
+          <input id="accessCodeInput" type="password" placeholder="leave empty if the site is public" autocomplete="off" />
+        </label>
+        <p class="muted small" id="accessStatus"></p>
+        <label class="switch-row">
+          <span>Share link format</span>
+          <code id="shareLink">—</code>
+        </label>
+      </section>
+
+      <section class="tab-panel" data-panel="data">
+        <div class="stat-row" id="statsRow"></div>
+        <button class="danger-btn" id="clearAllChats">Delete all chats</button>
+        <button class="ghost-btn" id="clearLocal">Clear keys &amp; preferences on this device</button>
+      </section>
+
+      <section class="tab-panel" data-panel="about">
+        <div class="about">
+          <div class="hero-logo small" aria-hidden="true">B</div>
+          <div>
+            <h3>Bats AI <span class="ver">v1.1 free</span></h3>
+            <p class="muted small">A ChatGPT-style assistant you own and run for free: streaming
+              chat on anonymous free models, live web search, image reading and image generation —
+              no API keys, no card, no paid service required.</p>
+          </div>
+        </div>
+        <ul class="about-list" id="aboutList"></ul>
+      </section>
+    </div>
+    <footer class="modal-foot">
+      <button class="ghost-btn" id="resetSettings">Reset defaults</button>
+      <button class="primary-btn" id="saveSettings">Done</button>
+    </footer>
+  </div>
+</div>
+
+<!-- image lightbox -->
+<div id="lightbox" class="lightbox" hidden>
+  <button class="lightbox-close" id="lightboxClose" aria-label="Close">×</button>
+  <img id="lightboxImg" alt="Generated image preview" />
+  <div class="lightbox-actions">
+    <a id="lightboxDownload" class="ghost-btn" download>Download</a>
+    <button class="ghost-btn" id="lightboxCopy">Copy prompt</button>
+  </div>
+</div>
+
+<!-- toasts -->
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+
+<script src="/static/markdown.js"></script>
+<script src="/static/app.js"></script>
+</body>
+</html>
