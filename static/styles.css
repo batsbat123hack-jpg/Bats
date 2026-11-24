@@ -552,3 +552,21 @@ code { font-family: var(--mono); font-size: .9em; background: var(--code-bg); pa
   .sidebar, .topbar, .composer-wrap, .msg-actions { display: none !important; }
   .thread { overflow: visible; }
 }
+
+/* ------------------------------------------------------- free mode accents */
+.badge.free-badge {
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--accent);
+  text-transform: lowercase;
+  letter-spacing: 0;
+}
+.free-note {
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: var(--accent-soft);
+  border: 1px solid color-mix(in srgb, var(--accent) 32%, transparent);
+  font-size: 12.8px;
+  line-height: 1.5;
+  margin-bottom: 14px;
+}
+.free-note b { color: var(--accent); }

@@ -84,7 +84,7 @@
       <div class="hero">
         <div class="hero-logo" aria-hidden="true">B</div>
         <h1>What can I help with?</h1>
-        <p class="hero-sub">Chat, search the live web, read images, and create pictures.</p>
+        <p class="hero-sub">Free to use, no key needed: chat, live web search, image reading, image creation.</p>
       </div>
       <div class="suggestions" id="suggestions"></div>
     </section>
@@ -141,6 +141,10 @@
     </nav>
     <div class="modal-body">
       <section class="tab-panel active" data-panel="keys">
+        <div class="free-note">
+          <b>You don't need any key.</b> Bats Free answers with anonymous free models and
+          keyless web search. Add a key below only if you want a specific paid model.
+        </div>
         <p class="muted">
           Keys you paste here stay in <strong>this browser</strong> (localStorage) and are sent
           straight to the provider. Server-side keys set on Render always take priority.
@@ -171,6 +175,8 @@
         <label class="field"><span>Image engine</span>
           <select id="imageProvider"></select>
         </label>
+        <p class="muted small">Free engines: Pollinations (real AI art) and Bats offline art
+          (works even with no internet). Adding an OpenAI key unlocks gpt-image-1.</p>
       </section>
 
       <section class="tab-panel" data-panel="search">
@@ -181,9 +187,9 @@
           <input type="checkbox" id="searchDefault" class="switch" />
         </label>
         <p class="muted small">
-          For the best results add a free key on Render:
-          <code>BRAVE_API_KEY</code>, <code>TAVILY_API_KEY</code> or <code>SERPER_API_KEY</code>.
-          Without any key the app falls back to DuckDuckGo + Wikipedia automatically.
+          Search works with <b>no key at all</b> (DuckDuckGo, Google News, Mojeek, Hacker News,
+          Wikipedia). Adding a free <code>BRAVE_API_KEY</code> or <code>TAVILY_API_KEY</code> on
+          Render makes it faster and more reliable.
         </p>
       </section>
 
@@ -213,10 +219,10 @@
         <div class="about">
           <div class="hero-logo small" aria-hidden="true">B</div>
           <div>
-            <h3>Bats AI <span class="ver">v1.0</span></h3>
-            <p class="muted small">A ChatGPT-style assistant you own: streaming chat, live web
-              search, image reading and image generation. Built with FastAPI + a dependency-free
-              front end, deployable to Render in one click.</p>
+            <h3>Bats AI <span class="ver">v1.1 free</span></h3>
+            <p class="muted small">A ChatGPT-style assistant you own and run for free: streaming
+              chat on anonymous free models, live web search, image reading and image generation —
+              no API keys, no card, no paid service required.</p>
           </div>
         </div>
         <ul class="about-list" id="aboutList"></ul>

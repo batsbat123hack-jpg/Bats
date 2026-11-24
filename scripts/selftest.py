@@ -33,6 +33,8 @@ TARGETS = [
     ("anthropic", "GET", "https://api.anthropic.com/v1/models", None),
     ("openrouter", "GET", "https://openrouter.ai/api/v1/models", None),
     ("pollinations-images", "GET", "https://image.pollinations.ai/models", None),
+    ("pollinations-text", "POST", "https://text.pollinations.ai/openai/chat/completions",
+     {"model": "openai", "messages": [{"role": "user", "content": "say hi"}], "max_tokens": 8}),
 ]
 
 SEARCH_KEYS = {
@@ -85,8 +87,10 @@ async def probe() -> int:
     except Exception as exc:  # noqa: BLE001
         print("Search probe error:", exc)
 
+    free_text = any(name == "pollinations-text" and ok for name, ok, _ in results)
+    print("Keyless chat (Bats Free):", "WORKING" if free_text else "unreachable — free models need outbound HTTPS")
     usable = [n for n, ok, _ in results if ok and n in {"openai", "groq", "gemini", "anthropic", "openrouter"}]
-    print("Model providers reachable:", ", ".join(usable) or "none")
+    print("Paid providers reachable:", ", ".join(usable) or "none (not needed)")
     return 0
 
 

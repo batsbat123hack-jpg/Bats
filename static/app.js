@@ -122,7 +122,7 @@
   }
   function usableProviders() {
     const list = state.config?.providers || [];
-    return list.filter((p) => p.configured || state.keys[p.env_var] || (p.id === 'custom' && state.keys['CUSTOM_BASE_URL']));
+    return list.filter((p) => p.free || p.configured || state.keys[p.env_var] || (p.id === 'custom' && state.keys['CUSTOM_BASE_URL']));
   }
 
   function pickDefaultModel() {
@@ -167,16 +167,10 @@
     menu.innerHTML = '';
     const providers = usableProviders();
     if (!providers.length) {
-      menu.append(el('div', { class: 'menu-group', text: 'No provider configured' }));
+      menu.append(el('div', { class: 'menu-group', text: 'Free models are loading' }));
       menu.append(el('div', {
         class: 'menu-item',
-        html: 'Add an API key in <b>Settings → API keys</b>, or set <code>OPENAI_API_KEY</code> on the server.',
-      }));
-      menu.append(el('div', { class: 'menu-divider' }));
-      menu.append(el('button', {
-        class: 'menu-item', type: 'button',
-        onclick: () => { closeMenus(); openSettings('keys'); },
-        html: '<span class="mi-main">Open API key settings</span>',
+        html: 'Bats Free needs no key. If nothing appears, reload the page.',
       }));
       return;
     }
@@ -203,6 +197,7 @@
             model.label || model.id,
             el('span', { class: 'mi-sub', text: provider.label + (model.vision ? ' · vision' : '') }),
           ),
+          provider.free ? el('span', { class: 'badge free-badge', text: 'free' }) : null,
           model.vision ? el('span', { class: 'badge', text: 'vision' }) : null,
         ));
       });
@@ -211,7 +206,7 @@
     menu.append(el('button', {
       class: 'menu-item', type: 'button',
       onclick: () => { closeMenus(); openSettings('keys'); },
-      html: '<span class="mi-main">Manage API keys<span class="mi-sub">Use more providers in this browser</span></span>',
+      html: '<span class="mi-main">Optional: add your own key<span class="mi-sub">Free models work without one</span></span>',
     }));
   }
 
@@ -225,8 +220,8 @@
     const heroSub = document.querySelector('.hero-sub');
     if (heroSub) {
       heroSub.textContent = usableProviders().length
-        ? 'Chat, search the live web, read images, and create pictures.'
-        : 'Add an API key in Settings to start — or browse the interface meanwhile.';
+        ? 'Free to use, no key needed: chat, live web search, image reading, image creation.'
+        : 'Free models are starting up — give it a second and type below.';
     }
     const pill = $('#statusPill');
     const side = $('#sideStatus');
@@ -235,8 +230,8 @@
     if (!providers.length) {
       pill.hidden = false;
       pill.className = 'pill error';
-      pill.textContent = 'No API key';
-      side.innerHTML = '<span class="dot"></span> Add a key in Settings';
+      pill.textContent = 'Connecting…';
+      side.innerHTML = '<span class="dot warn"></span> Loading models…';
     } else if (state.streaming) {
       pill.hidden = false;
       pill.className = 'pill';
@@ -244,8 +239,11 @@
       side.innerHTML = '<span class="dot ok"></span> Connected';
     } else {
       pill.hidden = true;
-      const keyless = !providerEntry(state.provider)?.has_key;
-      side.innerHTML = `<span class="dot ok"></span> ${keyless ? 'Your key' : 'Server key'} · ${search.length ? search[0] + ' search' : 'no search'}`;
+      const entry = providerEntry(state.provider);
+      const source = entry?.free ? 'Free · no key'
+        : entry?.has_key ? 'Server key'
+        : state.keys[entry?.env_var] ? 'Your key' : 'No key';
+      side.innerHTML = `<span class="dot ok"></span> ${source} · ${search.length ? search[0] + ' search' : 'no search'}`;
     }
     $('#searchBtn').setAttribute('aria-pressed', state.searchOn ? 'true' : 'false');
     $('#imageBtn').setAttribute('aria-pressed', state.imageMode ? 'true' : 'false');
@@ -865,10 +863,15 @@
             statusRow.remove();
             md.innerHTML = '';
             md.append(el('div', { style: 'color:var(--danger);font-size:14px', text: evt.message || 'Something went wrong' }));
-            md.append(el('div', { style: 'margin-top:8px' },
+            md.append(el('div', { style: 'margin-top:8px;display:flex;gap:8px;flex-wrap:wrap' },
               el('button', {
                 class: 'ghost-btn', type: 'button', style: 'padding:5px 10px;font-size:12px',
-                text: 'Open API key settings',
+                text: 'Retry',
+                onclick: () => regenerate({ id: 'retry-' + uid() }),
+              }),
+              el('button', {
+                class: 'ghost-btn', type: 'button', style: 'padding:5px 10px;font-size:12px',
+                text: 'Optional: use my own key',
                 onclick: () => openSettings('keys'),
               }),
             ));
@@ -1370,11 +1373,13 @@
       openConversation(lastId, true);
     }
     if (!usableProviders().length) {
-      // nothing to chat with yet — show the key panel instead of a dead UI
+      // last resort only: free mode normally always yields a provider
       setTimeout(() => {
-        openSettings('keys');
-        toast('Add an API key to start chatting', '', 6000);
-      }, 500);
+        if (!usableProviders().length) {
+          openSettings('keys');
+          toast('No model available yet — check FREE_MODE or add a key', '', 6000);
+        }
+      }, 1500);
     }
     autoGrow();
     $('#input').focus();

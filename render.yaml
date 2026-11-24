@@ -17,6 +17,9 @@ services:
         value: "3.11.9"
       - key: APP_NAME
         value: Bats AI
+      # ---- works with ZERO keys: anonymous free models + keyless search/art
+      - key: FREE_MODE
+        value: "true"
       - key: PUBLIC_URL
         value: https://www.bats-ai.onrender.com
       - key: DATA_DIR
@@ -44,7 +47,7 @@ services:
         sync: false
       - key: XAI_API_KEY
         sync: false
-      # ---- image generation --------------------------------------------
+      # ---- image generation (free, no key) -----------------------------
       - key: IMAGE_PROVIDER
         value: pollinations
       # free & keyless: works immediately. Set OPENAI_API_KEY + IMAGE_PROVIDER=openai
@@ -58,9 +61,9 @@ services:
         sync: false
       - key: WEB_SEARCH_DEFAULT
         value: "true"
-      # ---- optional: try the app with zero keys (canned answers + demo art)
+      # ---- offline placeholder answers if the free service is busy -------
       - key: DEMO_MODE
-        value: "false"
+        value: "true"
       # ---- optional protection for a public URL
       - key: ACCESS_CODE
         sync: false

@@ -315,8 +315,8 @@ async def generate_image(
     providers = settings.image_providers
     if not providers:
         raise UploadError(
-            "Image generation is not configured. Add OPENAI_API_KEY, or enable the free "
-            "Pollinations back-end with IMAGE_PROVIDER=pollinations on the server."
+            "Image generation is not configured. Free mode ships with Pollinations and "
+            "Bats Demo art — set IMAGE_PROVIDER=pollinations (or demo) on the server."
         )
     spec = next((p for p in providers if p["id"] == provider_id), providers[0])
     kind = spec["kind"]
@@ -356,20 +356,57 @@ async def generate_image(
 async def _generate_pollinations(
     settings: config.Settings, prompt: str, model: str, width: int, height: int
 ) -> GeneratedImage:
+    """Free, keyless image generation with model and parameter fallback."""
     from urllib.parse import quote
 
-    model = model or "flux"
-    url = f"https://image.pollinations.ai/prompt/{quote(prompt[:900])}"
-    params = {"width": width, "height": height, "model": model, "nologo": "true", "seed": int.from_bytes(os.urandom(2), "big")}
-    timeout = httpx.Timeout(connect=15.0, read=120.0, write=30.0, pool=15.0)
-    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-        try:
-            r = await client.get(url, params=params)
-        except httpx.HTTPError as exc:
-            raise UploadError(f"Could not reach the free image service ({exc.__class__.__name__}).", status=502)
-        if r.status_code >= 400 or not r.content:
-            raise UploadError(f"Free image service failed ({r.status_code}). Try again.", status=502)
-    return _save_generated(settings, r.content, prompt, model, "pollinations")
+    base = (os.environ.get("POLLINATIONS_BASE_URL") or "https://image.pollinations.ai").rstrip("/")
+    token = (os.environ.get("POLLINATIONS_TOKEN") or "").strip()
+    candidates: list[str] = []
+    for name in (model, "flux", "turbo", "kontext"):
+        if name and name not in candidates:
+            candidates.append(name)
+
+    timeout = httpx.Timeout(connect=20.0, read=180.0, write=30.0, pool=20.0)
+    headers = {"User-Agent": "BatsAI/1.0 (+https://www.bats-ai.onrender.com)"}
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+    errors: list[str] = []
+    async with httpx.AsyncClient(timeout=timeout, follow_redirects=True, headers=headers) as client:
+        for candidate in candidates:
+            url = f"{base}/prompt/{quote(prompt[:900])}"
+            params = {
+                "width": width,
+                "height": height,
+                "model": candidate,
+                "nologo": "true",
+                "seed": int.from_bytes(os.urandom(2), "big"),
+            }
+            if token:
+                params["token"] = token
+            try:
+                r = await client.get(url, params=params)
+            except httpx.HTTPError as exc:
+                errors.append(f"{candidate}: {exc.__class__.__name__}")
+                continue
+            if r.status_code < 400 and r.content and r.headers.get("content-type", "").startswith("image"):
+                return _save_generated(settings, r.content, prompt, candidate, "pollinations")
+            errors.append(f"{candidate}: HTTP {r.status_code}")
+            if r.status_code in (401, 402, 429):
+                # anonymous tier limited: retry the same prompt with a lower load
+                retry_params = dict(params, width=min(width, 1024), height=min(height, 1024))
+                try:
+                    r2 = await client.get(url, params=retry_params)
+                    if r2.status_code < 400 and r2.content:
+                        return _save_generated(settings, r2.content, prompt, candidate, "pollinations")
+                except httpx.HTTPError:
+                    pass
+    raise UploadError(
+        "The free image service did not return an image ("
+        + "; ".join(errors[:3])
+        + "). It is busy or rate limiting this server — try again, use Demo art in Settings, "
+        "or add OPENAI_API_KEY for gpt-image-1.",
+        status=502,
+    )
 
 
 async def _generate_openai(

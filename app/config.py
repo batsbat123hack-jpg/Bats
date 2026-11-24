@@ -79,7 +79,7 @@ class ProviderSpec:
 
     id: str
     label: str
-    kind: str  # "openai_compat" | "anthropic"
+    kind: str  # "openai_compat" | "anthropic" | "free" | "demo"
     env_key: str  # name of the env var holding the API key
     base_url: str
     models: tuple[ModelInfo, ...]
@@ -93,6 +93,25 @@ def _m(model_id: str, label: str, vision: bool = False) -> ModelInfo:
 
 
 PROVIDER_SPECS: tuple[ProviderSpec, ...] = (
+    ProviderSpec(
+        id="free",
+        label="Bats Free — no key needed",
+        kind="free",
+        env_key="FREE_API_KEY",
+        base_url="https://text.pollinations.ai/openai",
+        requires_key=False,
+        docs_url="",
+        note="Anonymous free models. No signup, no card, no key.",
+        models=(
+            _m("openai", "Free GPT-class (openai)", True),
+            _m("openai-fast", "Free fast (openai-fast)", True),
+            _m("mistral", "Free Mistral", False),
+            _m("llama", "Free Llama", False),
+            _m("qwen-coder", "Free Qwen Coder", False),
+            _m("deepseek", "Free DeepSeek", False),
+            _m("gemini", "Free Gemini", True),
+        ),
+    ),
     ProviderSpec(
         id="openai",
         label="OpenAI",
@@ -270,7 +289,7 @@ IMAGE_PROVIDER_SPECS: tuple[ImageProviderSpec, ...] = (
     ),
     ImageProviderSpec(
         id="demo",
-        label="Bats Demo images (no key)",
+        label="Bats offline art (no key, works without internet)",
         kind="demo",
         env_key="",
         base_url="local://demo",
@@ -311,6 +330,10 @@ class Settings:
     search_enabled_default: bool = True
     public_url: str = ""
     extra_cors_origins: list[str] = field(default_factory=list)
+    free_mode: bool = True
+    free_base_url: str = ""
+    free_model: str = ""
+    pollinations_token: str = ""
     access_code: str = ""
     rate_per_minute: int = 40
     rate_per_day: int = 2000
@@ -362,6 +385,9 @@ class Settings:
                 "vision": any(p.get("vision") for p in self.providers),
                 "streaming": True,
             },
+            "free_mode": self.free_mode,
+            "free_model": self.free_model or "openai",
+            "has_pollinations_token": bool(self.pollinations_token),
             "needs_setup": not self.available_providers and not self.allow_client_keys,
             "ready": bool(self.available_providers),
             "search_enabled_default": self.search_enabled_default,
@@ -382,6 +408,10 @@ class Settings:
                 "svg",
             ],
         }
+
+
+def settings_free_model() -> str:
+    return env("FREE_LLM_MODEL")
 
 
 def _detect_providers() -> list[dict[str, Any]]:
@@ -408,6 +438,12 @@ def _detect_providers() -> list[dict[str, Any]]:
         if spec.id == "ollama" and not env("OLLAMA_BASE_URL"):
             # a cloud host has no local Ollama — only enable it when pointed at one
             configured = False
+        if spec.id == "free":
+            if not env_bool("FREE_MODE", True):
+                configured = False
+            base = env("FREE_LLM_BASE_URL") or spec.base_url
+        if spec.id == "free" and settings_free_model():
+            models = [{"id": settings_free_model(), "label": f"Free ({settings_free_model()})", "vision": True}] + models
         models = [{"id": m.id, "label": m.label, "vision": m.vision} for m in spec.models]
         found.append(
             {
@@ -418,6 +454,7 @@ def _detect_providers() -> list[dict[str, Any]]:
                 "models": models,
                 "requires_key": spec.requires_key,
                 "has_key": bool(key),
+                "free": spec.id == "free",
                 "env_var": spec.env_key,
                 "configured": configured,
                 "docs_url": spec.docs_url,
@@ -499,6 +536,10 @@ def build_settings() -> Settings:
     settings.allow_client_keys = env_bool("ALLOW_CLIENT_KEYS", settings.allow_client_keys)
     settings.search_enabled_default = env_bool("WEB_SEARCH_DEFAULT", settings.search_enabled_default)
     settings.public_url = env("PUBLIC_URL")
+    settings.free_mode = env_bool("FREE_MODE", settings.free_mode)
+    settings.free_base_url = env("FREE_LLM_BASE_URL")
+    settings.free_model = env("FREE_LLM_MODEL")
+    settings.pollinations_token = env("POLLINATIONS_TOKEN")
     settings.access_code = env("ACCESS_CODE")
     settings.rate_per_minute = env_int("RATE_LIMIT_PER_MINUTE", settings.rate_per_minute)
     settings.rate_per_day = env_int("RATE_LIMIT_PER_DAY", settings.rate_per_day)
@@ -526,18 +567,26 @@ def build_settings() -> Settings:
 
     demo.register(settings)
 
-    if env_bool("DEMO_MODE", False) and not any(
-        p["id"] != "demo" for p in settings.image_providers
-    ):
-        # no real image key -> demo art, so the UI is fully usable
-        settings.image_providers = [
-            {"id": "demo", "label": "Bats Demo images (no key)", "kind": "demo",
-             "base_url": "local://demo", "models": ["bats-demo"],
-             "requires_key": False, "has_key": True, "env_var": ""}
-        ] + settings.image_providers
+    has_real_image_key = any(
+        p["id"] not in {"demo", "pollinations"} for p in settings.image_providers
+    )
+    if env_bool("DEMO_MODE", False) and not has_real_image_key:
+        # demo art as an explicit, offline fallback engine in the engine picker
+        settings.image_providers = settings.image_providers + [
+            spec for spec in [
+                {"id": "demo", "label": "Bats Demo art (offline)", "kind": "demo",
+                 "base_url": "local://demo", "models": ["bats-demo"],
+                 "requires_key": False, "has_key": True, "env_var": ""}
+            ] if spec["id"] not in {p["id"] for p in settings.image_providers}
+        ]
 
     if settings.image_providers:
         wanted = env("DEFAULT_IMAGE_PROVIDER") or env("IMAGE_PROVIDER")
+        if not wanted:
+            # free first: real AI art from Pollinations, demo art only as fallback
+            wanted = "pollinations" if any(
+                p["id"] == "pollinations" for p in settings.image_providers
+            ) else settings.image_providers[0]["id"]
         chosen = next(
             (p for p in settings.image_providers if p["id"] == wanted),
             settings.image_providers[0],

@@ -213,7 +213,7 @@ async function boot() {
     assert(labels.some((l) => l.includes('GPT-4o mini')), labels.join('|'));
     assert(!labels.some((l) => l.includes('Claude Sonnet')), 'unconfigured provider hidden');
     const claude = doc.querySelector('#modelMenu');
-    assert(claude.textContent.includes('Manage API keys'));
+    assert(claude.textContent.includes('Optional: add your own key'));
     // pick GPT-4o
     const gpt4o = Array.from(doc.querySelectorAll('#modelMenu .menu-item')).find((i) => i.querySelector('.mi-main')?.firstChild.textContent.trim() === 'GPT-4o');
     gpt4o.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));

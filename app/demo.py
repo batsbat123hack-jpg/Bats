@@ -85,10 +85,14 @@ def _compose_art(prompt: str, width: int, height: int) -> bytes:
             fill=(255, 255, 255),
             width=max(1, width // 500),
         )
-    # vignette + caption bar
-    for i in range(90):
-        alpha = int(i * 2.2)
-        draw.rectangle([i, i, width - i, height - i], outline=(0, 0, 0), width=1)
+    # soft vignette (translucent overlay rather than hard frames)
+    vignette = Image.new("L", (width, height), 0)
+    vdraw = ImageDraw.Draw(vignette)
+    for i in range(70):
+        shade = int(120 * (1 - i / 70))
+        vdraw.rectangle([i, i, width - 1 - i, height - 1 - i], outline=shade)
+    img.paste(Image.new("RGB", (width, height), (0, 0, 0)), (0, 0), vignette.point(lambda v: v // 3))
+
     bar_h = max(48, height // 14)
     draw.rectangle([0, height - bar_h, width, height], fill=(6, 8, 12))
     draw.text((16, height - bar_h + bar_h // 2 - 5), f"BATS DEMO - {prompt[:52]}", fill=(226, 238, 252))
@@ -97,11 +101,14 @@ def _compose_art(prompt: str, width: int, height: int) -> bytes:
     return buf.getvalue()
 
 
-def demo_reply(text: str, system: str, has_image: bool) -> str:
+def demo_reply(text: str, system: str, has_image: bool, notice: str = "") -> str:
     grounded = "Web search results for" in system
-    lines = [
+    intro = notice or (
         "**Demo mode** — this deployment has no model API key yet, so you are seeing a "
-        "canned answer that exercises the whole interface.",
+        "canned answer that exercises the whole interface."
+    )
+    lines = [
+        intro,
         "",
         "### Everything you just used works",
         "",
@@ -133,19 +140,21 @@ def demo_reply(text: str, system: str, has_image: bool) -> str:
         lines.append(f"You said: *{quoted}*")
     lines.append("")
     lines.append(
-        "To get real answers, add `OPENAI_API_KEY` (or any of Groq, Gemini, Anthropic, "
-        "OpenRouter, DeepSeek, Mistral, xAI) in the Render environment, or paste a key in "
-        "**Settings → API keys**."
+        "Bats Free needs no key at all. If the free models are busy, press **Retry** — or "
+        "add a free Groq/Gemini key in **Settings → API keys** for guaranteed availability."
     )
     return "\n".join(lines)
 
 
 async def stream(
-    messages: list[dict[str, Any]], system: str, max_tokens: int = 2048
+    messages: list[dict[str, Any]],
+    system: str,
+    max_tokens: int = 2048,
+    notice: str = "",
 ) -> AsyncIterator[dict[str, Any]]:
     last_user = next((m for m in reversed(messages) if m["role"] == "user"), {"content": ""})
     has_image = bool(last_user.get("images"))
-    reply = demo_reply(last_user.get("content", ""), system, has_image)
+    reply = demo_reply(last_user.get("content", ""), system, has_image, notice)
     if "title for this conversation" in " ".join(
         str(m.get("content", "")) for m in messages
     ).lower():

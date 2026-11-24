@@ -235,6 +235,7 @@ async def stream_answer(
     system: str,
     options: dict[str, Any],
     vision: bool,
+    degrade_on_error: bool = True,
 ) -> AsyncIterator[dict[str, Any]]:
     """Proxy provider events, tolerating gateways that reject some options."""
     attempts: list[dict[str, Any]] = [
@@ -250,6 +251,9 @@ async def stream_answer(
         {"max_tokens": options.get("max_tokens", 2048)},
         {},
     ]
+    if runtime.kind in {"free", "demo"}:
+        # these adapters already fall back internally; never double-charge a turn
+        attempts = attempts[:1]
     last_error: providers.ProviderError | None = None
     for index, params in enumerate(attempts):
         produced = False
@@ -267,6 +271,19 @@ async def stream_answer(
             return
         except providers.ProviderError as exc:
             last_error = exc
+            if runtime.kind == "free" and not produced:
+                # free models are busy sometimes: answer with a graceful notice
+                if not degrade_on_error:
+                    raise
+                yield {"type": "status", "text": "Free models busy — using offline reply…"}
+                notice = (
+                    f"**The free service is busy right now** ({exc.message.split('.')[0]}). "
+                    "This is an offline placeholder answer; press **Retry** in a moment."
+                )
+                demo_module = __import__("app.demo", fromlist=["demo"])
+                async for event in demo_module.stream(messages, system, 2048, notice):
+                    yield event
+                return
             if produced or exc.status == 400 and index >= 2:
                 raise
             if index + 1 >= len(attempts):

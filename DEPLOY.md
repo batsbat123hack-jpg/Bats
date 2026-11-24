@@ -4,11 +4,40 @@ This walks through going live on Render, including the custom domain, the API
 keys that switch on AI answers, image generation and web search, and the
 persistent disk that keeps your chats.
 
+> **🚀 Free by default.** You do **not** need a single API key, card or paid
+> service. Out of the box the app runs on anonymous free models (Bats Free),
+> keyless web search (DuckDuckGo, Google News, Mojeek, Hacker News, Wikipedia)
+> and free AI image generation (Pollinations). Everything in the UI works;
+> keys are purely optional upgrades.
+
 > **60-second version**
 > 1. Render → **New + → Blueprint** → pick this repo → **Apply**.
-> 2. When Render asks for secrets, paste at least one model key (`OPENAI_API_KEY`).
+> 2. Skip every secret prompt (they are all optional).
 > 3. Add your custom domain `www.bats-ai.onrender.com` in **Settings → Custom Domains**.
-> 4. Open the site, pick a model, send a message. Done.
+> 4. Open the site and send a message. Done — no keys involved.
+
+---
+
+## 0. What is free, exactly?
+
+| Feature | Free default | Optional upgrade |
+| --- | --- | --- |
+| Chat answers | **Bats Free** — anonymous free models (`openai`, `openai-fast`, `gemini`, `mistral`, `llama`, `qwen-coder`, `deepseek`), with automatic fallback between them | your own key (OpenAI, Groq, Gemini…) |
+| Web search | **keyless** – DuckDuckGo → Google News → Mojeek → Hacker News → Wikipedia, then the top pages are read and cited | `BRAVE_API_KEY` / `TAVILY_API_KEY` for speed + reliability |
+| Image generation | **keyless** – Pollinations (FLUX-class art), plus *Bats offline art* that works with no internet at all | `OPENAI_API_KEY` → `gpt-image-1` |
+| Image upload / vision | **free** – 13 formats normalised server-side | — |
+| Hosting | Render free plan (sleeps when idle) | paid instance for always-on |
+
+Two honest caveats about "free":
+
+1. **Free models are best-effort.** The anonymous pool is sometimes busy; the app
+   automatically tries the next free model, then falls back to an offline notice
+   with a **Retry** button rather than an error. If you need guaranteed answers,
+   a free Groq or Gemini key takes 30 seconds and costs nothing.
+2. **Free text models (text.pollinations.ai) may ask for a token under load.**
+   It works anonymously; if you see repeated "busy" notices, grab a free token at
+   <https://auth.pollinations.ai> and set `POLLINATIONS_TOKEN` — that also unlocks
+   higher image limits.
 
 ---
 
@@ -45,11 +74,23 @@ Render deploys straight from GitHub, so the code must be pushed first.
 Add a **Disk**: mount path `/var/data`, 1 GB, and set `DATA_DIR=/var/data`.
 Without the disk, chats and uploaded images are lost on every deploy/restart.
 
-## 3. The API keys that switch features on
+## 3. Optional: keys that upgrade quality (none required)
 
-Set these in **Dashboard → your service → Environment**. Only one model key is
-strictly required. Keys can also be pasted in the app's **Settings → API keys**
-(stored in the visitor's browser) if you would rather not put them on the server.
+You can skip this entire section. Set keys in **Dashboard → your service →
+Environment** only if you want specific paid models or faster search. Keys can
+also be pasted in the app's **Settings → API keys** (stored in the visitor's
+browser) if you would rather not put them on the server.
+
+### Free mode switches (on by default)
+
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `FREE_MODE` | `true` | serve chat from anonymous free models, no key |
+| `FREE_LLM_BASE_URL` | `https://text.pollinations.ai/openai` | free text endpoint (swap for your own) |
+| `FREE_LLM_MODEL` | `openai` | which free model to try first |
+| `POLLINATIONS_TOKEN` | — | free token that raises free-model + image limits |
+| `DEMO_MODE` | `true` | offline placeholder answer if every free model is busy, plus offline art engine |
+| `IMAGE_PROVIDER` | `pollinations` | free AI art; `demo` for fully offline art |
 
 ### AI answers (pick one or more)
 
@@ -139,9 +180,16 @@ curl -X POST https://www.bats-ai.onrender.com/api/search \
      -d '{"query":"latest AI news","limit":3}'
 ```
 
+With **zero keys** you should already see:
+
+```bash
+curl https://www.bats-ai.onrender.com/healthz
+# {"status":"ok","providers":["free"],"search":["duckduckgo",...],"images":["demo","pollinations"],...}
+```
+
 In the browser:
 
-1. The model menu offers your configured providers (only those with keys).
+1. The model menu shows **Bats Free — no key needed** with several free models.
 2. Send a message → tokens stream in, Markdown/code/tables render.
 3. Turn on **Search** in the composer → the answer shows clickable sources.
 4. Click **Attach** and send a PNG/JPG/HEIC/WebP/GIF/AVIF/TIFF/SVG → the model
@@ -204,7 +252,9 @@ node tests/ui.test.js              # full UI drive-through with jsdom
 
 | Symptom | Fix |
 | --- | --- |
-| "No API key for OpenAI" | Add `OPENAI_API_KEY` on Render, or paste a key in Settings → API keys. |
+| "The free service is busy right now" | The anonymous free pool is loaded; press **Retry**, or set `POLLINATIONS_TOKEN`, or add a free Groq/Gemini key. |
+| Free images fail (401/402/429) | Pollinations is rate limiting this server IP. The app falls back to offline art; set `POLLINATIONS_TOKEN` (free) or add `OPENAI_API_KEY`. |
+| "No API key for OpenAI" | That is a paid provider you selected; switch back to **Bats Free** in the model menu, or add the key. |
 | Model menu is empty | No provider configured; add a key. `DEMO_MODE=true` gives a keyless demo. |
 | Web search always fails | Render IPs are rate-limited by DuckDuckGo — add `BRAVE_API_KEY` (free 2k/month) or `TAVILY_API_KEY`. |
 | Upload says "not a readable image" | The file is corrupt or genuinely not an image; supported: PNG, JPG, GIF, WEBP, BMP, TIFF, ICO, HEIC, AVIF, SVG. |

@@ -38,14 +38,26 @@ class Runtime:
     kind: str
     base_url: str
     api_key: str
-    key_source: str  # "server" | "client" | "none"
+    key_source: str  # "server" | "client" | "free" | "demo" | "none"
 
 
 def catalogue() -> list[dict[str, Any]]:
     return config.build_settings().providers  # cheap: re-reads env each call
 
 
+FREE_DEFAULT_BASE = "https://text.pollinations.ai/openai"
+
+
 def _spec(provider_id: str) -> dict[str, Any] | None:
+    if provider_id == "free":
+        return {
+            "id": "free",
+            "label": "Bats Free",
+            "kind": "free",
+            "env_key": "FREE_API_KEY",
+            "base_url": os.environ.get("FREE_LLM_BASE_URL", "").strip() or FREE_DEFAULT_BASE,
+            "requires_key": False,
+        }
     if provider_id == "demo":
         return {
             "id": "demo",
@@ -92,6 +104,10 @@ def resolve(
         api_key, source = server_key, "server"
     elif client_key and allow_client_keys:
         api_key, source = client_key.strip(), "client"
+    elif spec["kind"] == "free":
+        api_key, source = "", "free"
+    elif spec["kind"] == "demo":
+        api_key, source = "", "demo"
     else:
         api_key, source = "", "none"
 
@@ -226,10 +242,16 @@ async def stream_chat(
     top_p: float | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
     """Yield events: {"type":"text","text":...}, {"type":"usage",...}."""
+    if runtime.kind == "free":
+        async for event in _stream_free(
+            runtime, messages, system, model, temperature, max_tokens, vision
+        ):
+            yield event
+        return
     if runtime.kind == "demo":
         from . import demo
 
-        async for event in demo.stream(messages, system, max_tokens):
+        async for event in demo.stream(messages, system, max_tokens):  # type: ignore[call-arg]
             yield event
         return
     if runtime.kind == "anthropic":
@@ -366,6 +388,214 @@ async def _stream_anthropic(
             raise ProviderError("Anthropic timed out.")
         except httpx.HTTPError as exc:
             raise ProviderError(f"Could not reach Anthropic: {exc.__class__.__name__}")
+
+
+
+# --------------------------------------------------------------------------- #
+# Free (no key) provider
+# --------------------------------------------------------------------------- #
+FREE_MODEL_ORDER = [
+    "openai",
+    "openai-fast",
+    "gemini",
+    "mistral",
+    "llama",
+    "qwen-coder",
+    "deepseek",
+]
+
+
+def _free_payload(
+    model: str,
+    messages: list[dict[str, Any]],
+    system: str,
+    temperature: float,
+    max_tokens: int,
+    vision: bool,
+    stream: bool,
+) -> dict[str, Any]:
+    payload: dict[str, Any] = {
+        "model": model,
+        "messages": _openai_messages(messages, system, vision),
+        "stream": stream,
+        "max_tokens": max_tokens,
+    }
+    if temperature is not None:
+        payload["temperature"] = max(0.0, min(2.0, temperature))
+    return payload
+
+
+def _free_headers(runtime: "Runtime") -> dict[str, str]:
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "text/event-stream",
+        "User-Agent": "BatsAI/1.0 (+https://www.bats-ai.onrender.com)",
+    }
+    if runtime.api_key:
+        headers["Authorization"] = f"Bearer {runtime.api_key}"
+    return headers
+
+
+async def _stream_free(
+    runtime: Runtime,
+    messages: list[dict[str, Any]],
+    system: str,
+    model: str,
+    temperature: float,
+    max_tokens: int,
+    vision: bool,
+) -> AsyncIterator[dict[str, Any]]:
+    """Anonymous free models with automatic model + transport fallback.
+
+    Tries the requested model first, then the other free models, then a
+    non-streaming request, so a busy/renamed upstream model degrades instead
+    of failing the turn.
+    """
+    tried: list[str] = []
+    candidates = [model] + [m for m in FREE_MODEL_ORDER if m != model]
+    timeout = httpx.Timeout(connect=15.0, read=150.0, write=30.0, pool=15.0)
+    last_error: str = ""
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for candidate in candidates:
+            if candidate in tried:
+                continue
+            tried.append(candidate)
+            url = f"{runtime.base_url}/chat/completions"
+            payload = _free_payload(
+                candidate, messages, system, temperature, max_tokens, vision, True
+            )
+            try:
+                async with client.stream(
+                    "POST", url, json=payload, headers=_free_headers(runtime)
+                ) as response:
+                    ctype = response.headers.get("content-type", "")
+                    if response.status_code >= 400:
+                        body = (await response.aread()).decode("utf-8", "replace")
+                        last_error = _http_error(runtime, response.status_code, body)
+                        continue
+                    if "event-stream" not in ctype and "application/json" in ctype:
+                        # upstream ignored stream=true and returned one JSON body
+                        raw = (await response.aread()).decode("utf-8", "replace")
+                        text = _json_completion_text(raw)
+                        if text:
+                            yield {"type": "text", "text": text}
+                            yield {"type": "finish", "reason": "stop"}
+                            return
+                        last_error = "empty response"
+                        continue
+                    produced = False
+                    usage: dict[str, Any] = {}
+                    async for chunk in _iter_sse(response):
+                        if chunk.get("error"):
+                            last_error = _extract_error(chunk["error"]) or "provider error"
+                            break
+                        if chunk.get("usage"):
+                            usage = chunk["usage"]
+                        choices = chunk.get("choices") or []
+                        if not choices:
+                            continue
+                        delta = choices[0].get("delta") or {}
+                        piece = delta.get("content")
+                        if isinstance(piece, list):
+                            piece = "".join(
+                                part.get("text", "") for part in piece if isinstance(part, dict)
+                            )
+                        reasoning = delta.get("reasoning_content") or delta.get("reasoning")
+                        if reasoning:
+                            yield {"type": "thinking", "text": reasoning}
+                        if piece:
+                            produced = True
+                            yield {"type": "text", "text": piece}
+                        if choices[0].get("finish_reason"):
+                            yield {"type": "finish", "reason": choices[0]["finish_reason"]}
+                    if produced:
+                        if usage:
+                            yield {"type": "usage", "usage": usage}
+                        return
+                    last_error = last_error or "no content in stream"
+            except httpx.TimeoutException:
+                last_error = f"free model {candidate} timed out"
+            except httpx.HTTPError as exc:
+                last_error = f"free endpoint unreachable ({exc.__class__.__name__})"
+
+        # last resort: non-streaming request (different code path upstream)
+        for candidate in tried[:3]:
+            try:
+                payload = _free_payload(
+                    candidate, messages, system, temperature, max_tokens, vision, False
+                )
+                response = await client.post(
+                    f"{runtime.base_url}/chat/completions",
+                    json=payload,
+                    headers=_free_headers(runtime),
+                )
+                if response.status_code >= 400:
+                    continue
+                text = _json_completion_text(response.text)
+                if text:
+                    yield {"type": "text", "text": text}
+                    yield {"type": "finish", "reason": "stop"}
+                    return
+            except httpx.HTTPError:
+                continue
+
+    raise ProviderError(
+        "No free model answered just now"
+        + (f" ({last_error})" if last_error else "")
+        + ". Free services are busy sometimes — press Retry, or add a free key "
+        "(Groq/Gemini) in Settings for guaranteed availability.",
+        status=503,
+    )
+
+
+def _json_completion_text(raw: str) -> str:
+    """Pull the assistant text out of a non-streamed (or oddly streamed) body."""
+    raw = (raw or "").strip()
+    if not raw:
+        return ""
+    if raw.startswith("data:"):
+        parts = []
+        for line in raw.splitlines():
+            line = line.strip()
+            if not line.startswith("data:"):
+                continue
+            payload = line[5:].strip()
+            if payload in {"", "[DONE]"}:
+                continue
+            try:
+                chunk = json.loads(payload)
+            except ValueError:
+                continue
+            for choice in chunk.get("choices") or []:
+                content = (choice.get("message") or {}).get("content") or (
+                    choice.get("delta") or {}
+                ).get("content")
+                if content:
+                    parts.append(content)
+        return "".join(parts)
+    try:
+        data = json.loads(raw)
+    except ValueError:
+        return raw[:4000] if "<" not in raw[:80] else ""
+    if isinstance(data, dict):
+        choices = data.get("choices") or []
+        if choices:
+            first = choices[0]
+            message = first.get("message") or {}
+            if message.get("content"):
+                return message["content"]
+            if (first.get("delta") or {}).get("content"):
+                return first["delta"]["content"]
+            if first.get("text"):
+                return first["text"]
+        if isinstance(data.get("content"), str):
+            return data["content"]
+        if isinstance(data.get("response"), str):
+            return data["response"]
+    if isinstance(data, list) and data and isinstance(data[0], dict):
+        if data[0].get("content"):
+            return data[0]["content"]
+    return ""
 
 
 def _extract_error(error: Any) -> str:

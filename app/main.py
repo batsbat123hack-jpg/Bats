@@ -451,19 +451,45 @@ async def get_generated(image_id: str):
 @app.post("/api/images/generate")
 async def generate_image(body: ImageRequest) -> dict[str, Any]:
     cfg = settings()
-    try:
-        image = await images.generate_image(
-            cfg,
-            body.prompt,
-            provider_id=body.provider or cfg.default_image_provider,
-            model=body.model,
-            size=body.size,
-            client_key=body.api_key,
-            client_base_url=body.base_url,
-            style=body.style,
+    # try the requested engine, then the other configured engines (free first)
+    engine_ids: list[str] = []
+    for candidate in (body.provider or cfg.default_image_provider,
+                      cfg.default_image_provider,
+                      *[p["id"] for p in cfg.image_providers]):
+        if candidate and candidate not in engine_ids:
+            engine_ids.append(candidate)
+    engines = {p["id"]: p for p in cfg.image_providers}
+    requested = engine_ids[0] if engine_ids else ""
+    order = [e for e in engine_ids if e in engines]
+    if engines.get(requested, {}).get("has_key") or engines.get(requested, {}).get("requires_key"):
+        order = [requested]  # a paid engine with a key: no silent substitution
+    else:
+        order = sorted(order, key=lambda e: (engines[e]["kind"] != "demo"))
+    image = None
+    failure: images.UploadError | None = None
+    for index, engine in enumerate(order):
+        try:
+            image = await images.generate_image(
+                cfg,
+                body.prompt,
+                provider_id=engine,
+                model=body.model if index == 0 else "",
+                size=body.size,
+                client_key=body.api_key,
+                client_base_url=body.base_url,
+                style=body.style,
+            )
+            break
+        except images.UploadError as exc:
+            failure = exc
+            if exc.status in (400,) or engine == order[-1]:
+                break
+            log.warning("image engine %s failed: %s — trying next", engine, exc.message)
+    if image is None:
+        raise HTTPException(
+            failure.status if failure else 502,
+            failure.message if failure else "No image engine is available.",
         )
-    except images.UploadError as exc:
-        raise HTTPException(exc.status, exc.message)
     if body.conversation_id:
         store().add_message(
             body.conversation_id,

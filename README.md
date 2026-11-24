@@ -5,6 +5,12 @@ A ChatGPT-style assistant you own and can deploy to your own URL
 understanding and image generation, in one small FastAPI app with a
 dependency-free front end.
 
+**Runs 100% free out of the box: no API keys, no card, no paid service.**
+Chat answers come from anonymous free models (with automatic fallback between
+them), web search is keyless (DuckDuckGo → Google News → Mojeek → Hacker News →
+Wikipedia), and image generation is keyless too (Pollinations, plus an offline
+art engine that needs no internet at all).
+
 ![status](https://img.shields.io/badge/deploy-Render-46E3B7) ![python](https://img.shields.io/badge/python-3.11-blue) ![license](https://img.shields.io/badge/license-MIT-lightgrey)
 
 ---
@@ -13,6 +19,7 @@ dependency-free front end.
 
 | | |
 | --- | --- |
+| 🆓 **Zero-key free mode** | chat runs on anonymous free models with automatic model + transport fallback, so a fresh deploy can answer with no configuration; if the free pool is briefly busy the app degrades to a Retry prompt instead of an error |
 | 💬 **ChatGPT-like UI** | sidebar history with pin/rename/delete/search, model picker, streaming answers, markdown + GFM tables, syntax-highlighted code with copy buttons, LaTeX, citations, dark/light themes, mobile layout, keyboard shortcuts, read-aloud, export to Markdown |
 | 🔎 **Real web search** | Brave / Tavily / Serper / Exa / SearXNG when a key is present; automatic keyless fallback to DuckDuckGo, Google News RSS, Mojeek, Hacker News and Wikipedia. Results are fetched, page text is extracted and injected into the prompt, and sources appear as numbered clickable cards |
 | 🖼️ **Every image format in** | PNG, JPG/JPEG, GIF (incl. animated), WEBP, BMP, TIFF, ICO, HEIC/HEIF (iPhone), AVIF and SVG — normalised with Pillow so any vision model can read them, EXIF-rotated, resized and re-encoded for the model |
@@ -34,8 +41,11 @@ cp .env.example .env          # add a key, or paste one in the UI later
 uvicorn app.main:app --reload --port 8000
 ```
 
-Open <http://localhost:8000>. No keys? Set `DEMO_MODE=true` to try every screen
-with canned answers and generated placeholder art.
+Open <http://localhost:8000>. **Nothing else is required** — no key, no signup.
+You can start typing immediately and the answer streams from the free models.
+
+Want a specific paid model instead? Add `OPENAI_API_KEY` (or any provider key)
+to `.env`, or paste it into **Settings → API keys** in the browser.
 
 ## Deploy to `www.bats-ai.onrender.com`
 
@@ -57,13 +67,17 @@ Everything is environment driven — see [`.env.example`](.env.example) and the
 tables in [DEPLOY.md](DEPLOY.md). The important ones:
 
 ```ini
-# a model provider (at least one)
+# free mode — nothing required
+FREE_MODE=true                # anonymous free models, no key
+POLLINATIONS_TOKEN=           # optional free token: higher free-model/image limits
+
+# optional upgrades (any one of these is a drop-in quality boost)
 OPENAI_API_KEY=               # or GROQ_API_KEY / GEMINI_API_KEY / ANTHROPIC_API_KEY ...
 DEFAULT_PROVIDER=openai
 DEFAULT_MODEL=gpt-4o-mini
 
 # image generation
-IMAGE_PROVIDER=pollinations   # free, no key; or "openai" with a key
+IMAGE_PROVIDER=pollinations   # free, no key; "demo" = fully offline art; "openai" with a key
 
 # real web search (all optional — keyless fallbacks always work)
 BRAVE_API_KEY=                # or TAVILY_API_KEY / SERPER_API_KEY / EXA_API_KEY
@@ -87,7 +101,7 @@ app/providers.py       OpenAI-compatible + Anthropic streaming adapters
 app/search.py          multi-engine web search, page extraction, citations
 app/images.py          uploads (all formats), normalisation, image generation
 app/store.py           SQLite persistence (chats, messages, prefs)
-app/demo.py            keyless demo provider + local placeholder art
+app/demo.py            offline placeholder answers + local art engine
 render.yaml            Render blueprint (service, disk, env vars)
 ```
 
@@ -98,15 +112,18 @@ problems on your domain.
 ## Tests
 
 ```bash
-python -m pytest tests -q      # 28 backend tests (mock OpenAI provider)
+python -m pytest tests -q      # 37 backend tests
 node tests/markdown.test.js    # 20 markdown renderer tests
 node tests/ui.test.js          # 18 UI drive-through checks (jsdom)
 ```
 
-The backend suite starts a mock OpenAI-compatible server and exercises streaming
-chat, web-result grounding and citations, uploads in eight image formats plus
-SVG, vision payloads, image generation, conversation CRUD, titles, regenerate and
-error handling.
+`tests/test_app.py` runs against a mock OpenAI-compatible provider and covers
+streaming chat, web-result grounding and citations, uploads in eight image
+formats plus SVG, vision payloads, image generation, conversation CRUD, titles,
+regenerate and error handling. `tests/test_free_mode.py` proves the zero-key
+path: free-model streaming, fallback when models are busy, graceful degradation,
+offline image art, uploads and the OpenAI-compatible API — all with every
+provider key removed.
 
 ## License
 
